@@ -1,0 +1,56 @@
+#!/usr/bin/env python3
+
+import requests
+import string
+from lxml import html
+from urllib.parse import urlparse, parse_qs
+from subprocess import Popen, PIPE
+
+
+def has_non_whitespace(s):
+    return any(c not in string.whitespace for c in s)
+
+
+def find_code_in_url(url):
+    """Returns a string of all the code in a webpage."""
+    page = requests.get(url)
+    tree = html.fromstring(page.text.encode('utf-8'))
+    code_elems = tree.xpath('//pre')
+    return '\n'.join([e.text_content() for e in code_elems])
+
+
+def google_results_for(query):
+    """Return a generator of the top 10 Google results for a query."""
+    page = requests.get('https://www.google.com/search', params={'q': query})
+    tree = html.fromstring(page.text.encode('utf-8'))
+    xpath = r'//h3[@class="r"]/a'
+    for result in tree.xpath(xpath):
+        redir = result.attrib['href']
+        yield parse_qs(urlparse(redir).query)['q'][0]
+
+
+def execute_code(code, shell='cat'):
+    """Run the given code in bash, giving it input from yes >:)"""
+    with Popen([shell], stdin=PIPE) as proc:
+        proc.stdin.write(code.encode('utf-8'))
+        proc.stdin.close()
+        proc.wait()
+
+
+def main(query):
+    for url in google_results_for(query):
+        code = find_code_in_url(url)
+        if has_non_whitespace(code):
+            execute_code(code)
+            print('Troubleshooting complete.')
+            return
+        else:
+            print('Troubleshooter is still searching for answers...')
+
+    print('No solutions found.')
+
+
+if __name__ == '__main__':
+    import sys
+    main(' '.join(sys.argv[1:]))
+
